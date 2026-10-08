@@ -1,0 +1,412 @@
+openapi: 3.0.3
+info:
+  title: "E-Wallet System API"
+  description: "This API specification outlines the endpoints for an E-Wallet & Payment microservices system, all exposed through a single API Gateway."
+  version: "1.0.0"
+servers:
+  - url: "http://localhost:8080/api/v1"
+    description: "Local development server"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Enter JWT Bearer token"
+
+  schemas:
+    # User Schemas
+    UserRegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "a-very-secure-password"
+    UserRegisterResponse:
+      type: object
+      properties:
+        userID:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6"
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        message:
+          type: string
+          example: "User registered successfully"
+    UserLoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "a-very-secure-password"
+    UserLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # Wallet Schemas
+    WalletBalanceResponse:
+      type: object
+      properties:
+        userID:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6"
+        balance:
+          type: number
+          format: double
+          example: 1000000
+
+    # Transaction Schemas
+    TopUpRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+          format: double
+          example: 1000000
+          minimum: 1
+    TopUpResponse:
+      type: object
+      properties:
+        transactionID:
+          type: string
+          format: uuid
+          example: "t1a2b3c4-d5e6-f7g8-h9i0-j1k2l3m4n5o6"
+        message:
+          type: string
+          example: "Top-up successful"
+        newBalance:
+          type: number
+          format: double
+          example: 1000000
+    TransferRequest:
+      type: object
+      required:
+        - toUserID
+        - amount
+      properties:
+        toUserID:
+          type: string
+          format: uuid
+          example: "x1y2z3a4-b5c6-d7e8-f9g0-h1i2j3k4l5m6"
+        amount:
+          type: number
+          format: double
+          example: 1000000
+          minimum: 1
+    TransferResponse:
+      type: object
+      properties:
+        transactionID:
+          type: string
+          format: uuid
+          example: "p1q2r3s4-t5u6-v7w8-x9y0-z1a2b3c4d5e6"
+        status:
+          type: string
+          example: "pending"
+        message:
+          type: string
+          example: "Transfer initiated successfully."
+    PayRequest:
+      type: object
+      required:
+        - merchantID
+        - amount
+      properties:
+        merchantID:
+          type: string
+          example: "merchant-123"
+        amount:
+          type: number
+          format: double
+          example: 1000000
+          minimum: 1
+        description:
+          type: string
+          example: "Coffee and croissant"
+    PayResponse:
+      type: object
+      properties:
+        transactionID:
+          type: string
+          format: uuid
+        message:
+          type: string
+          example: "Payment successful"
+        newBalance:
+          type: number
+          format: double
+          example: 1000000
+    TransactionHistory:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            type: object
+            properties:
+              transactionID:
+                type: string
+                format: uuid
+              type:
+                type: string
+                enum: [topup, transfer_in, transfer_out, payment]
+              amount:
+                type: number
+                format: double
+              from:
+                type: string
+              to:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              status:
+                type: string
+                enum: [completed, pending, failed]
+        pagination:
+          type: object
+          properties:
+            currentPage:
+              type: integer
+            totalPages:
+              type: integer
+            totalItems:
+              type: integer
+
+    # Common Error Schema
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+paths:
+  /users/register:
+    post:
+      summary: "Register a new user"
+      tags: ["User"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegisterRequest"
+      responses:
+        "201":
+          description: "User created successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRegisterResponse"
+        "409":
+          description: "User with this email already exists"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/login:
+    post:
+      summary: "Authenticate a user"
+      tags: ["User"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLoginRequest"
+      responses:
+        "200":
+          description: "Authentication successful, JWT returned"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLoginResponse"
+        "401":
+          description: "Invalid credentials"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /wallet/balance:
+    get:
+      summary: "Get current wallet balance"
+      tags: ["Wallet"]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletBalanceResponse"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transactions/topup:
+    post:
+      summary: "Top up user's wallet"
+      tags: ["Transaction"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopUpRequest"
+      responses:
+        "200":
+          description: "Top-up successful"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopUpResponse"
+        "400":
+          description: "Bad Request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transactions/transfer:
+    post:
+      summary: "Transfer funds to another user"
+      tags: ["Transaction"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "202":
+          description: "Transfer initiated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "400":
+          description: "Bad Request (e.g., insufficient funds)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transactions/pay:
+    post:
+      summary: "Make a payment to a merchant"
+      tags: ["Transaction"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayRequest"
+      responses:
+        "200":
+          description: "Payment successful"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayResponse"
+        "400":
+          description: "Bad Request (e.g., insufficient funds)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transactions/history:
+    get:
+      summary: "Get user's transaction history"
+      tags: ["Transaction"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: "Page number for pagination"
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: "Number of items per page"
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "A list of transactions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionHistory"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
