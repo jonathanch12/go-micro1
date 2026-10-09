@@ -1,0 +1,17 @@
+# Environment
+.env
+
+# Build artifacts
+/bin/
+/server
+server.exe
+*.exe
+*.out
+
+# Go
+*.test
+*.prof
+
+# IDE
+.idea/
+.vscode/
