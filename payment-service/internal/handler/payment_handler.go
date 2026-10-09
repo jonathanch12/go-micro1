@@ -38,9 +38,10 @@ func (h *PaymentHandler) Pay(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidAmount),
-			errors.Is(err, service.ErrInsufficientFunds),
-			errors.Is(err, service.ErrPaymentExpired):
+			errors.Is(err, service.ErrInsufficientFunds):
 			respondError(c, http.StatusBadRequest, err.Error())
+		case errors.Is(err, service.ErrPaymentExpired):
+			respondError(c, http.StatusGone, err.Error())
 		case errors.Is(err, service.ErrWalletNotFound):
 			respondError(c, http.StatusNotFound, err.Error())
 		default:
@@ -51,6 +52,7 @@ func (h *PaymentHandler) Pay(c *gin.Context) {
 
 	c.JSON(http.StatusOK, model.PayResponse{
 		TransactionID: session.ID.String(),
+		Status:        string(session.Status),
 		Message:       "Payment successful",
 		NewBalance:    newBalance,
 	})

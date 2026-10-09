@@ -1,11 +1,25 @@
 openapi: 3.0.3
 info:
   title: "E-Wallet System API"
-  description: "This API specification outlines the endpoints for an E-Wallet & Payment microservices system, all exposed through a single API Gateway."
-  version: "1.0.0"
+  description: |
+    This specification covers an E-Wallet & Payment system that has been
+    decomposed into two independently deployed microservices:
+
+    - **Core Service** (`http://localhost:8080`) handles users, wallets,
+      top-ups, transfers, and transaction history.
+    - **Payment Service** (`http://localhost:8081`) owns the
+      `POST /transactions/pay` endpoint and the expiring-payment mechanism.
+
+    There is no shared API gateway: clients call each service directly on its
+    own port. Every path below is served under the `/api/v1` base path of the
+    service noted on the operation. Both services validate the same JWT
+    (issued by Core Service at `/users/login`) using a shared secret.
+  version: "2.0.0"
 servers:
   - url: "http://localhost:8080/api/v1"
-    description: "Local development server"
+    description: "Core Service - users, wallets, top-ups, transfers, history"
+  - url: "http://localhost:8081/api/v1"
+    description: "Payment Service - /transactions/pay (expiring payments)"
 
 components:
   securitySchemes:
@@ -158,16 +172,26 @@ components:
           example: "Coffee and croissant"
     PayResponse:
       type: object
+      description: |
+        Returned when a payment session is created and processed within its
+        10-minute validity window. The wallet is debited synchronously and the
+        session is marked completed.
       properties:
         transactionID:
           type: string
           format: uuid
+          description: "ID of the payment session created by the Payment Service."
+        status:
+          type: string
+          enum: [completed]
+          example: "completed"
         message:
           type: string
           example: "Payment successful"
         newBalance:
           type: number
           format: double
+          description: "The payer's wallet balance after the debit."
           example: 1000000
     TransactionHistory:
       type: object
@@ -195,7 +219,7 @@ components:
                 format: date-time
               status:
                 type: string
-                enum: [completed, pending, failed]
+                enum: [completed, pending, failed, expired]
         pagination:
           type: object
           properties:
@@ -349,7 +373,26 @@ paths:
   /transactions/pay:
     post:
       summary: "Make a payment to a merchant"
+      description: |
+        **Served by the Payment Service on `http://localhost:8081`**, not the
+        Core Service. This operation is NOT available on port 8080.
+
+        Expiring-payment mechanism:
+        - The request opens a *payment session* that is valid for 10 minutes
+          from creation (simulating a QRIS-style checkout).
+        - On the happy path the session is processed immediately: the Payment
+          Service calls the Core Service's internal wallet API to debit the
+          payer, records the ledger entry, marks the session `completed`, and
+          returns `200` with the new balance.
+        - If the session is not processed within the 10-minute window it is
+          marked `expired` by a background sweeper and the wallet is never
+          debited. A request against an already-expired session returns `410`.
+        - If the Core Service reports insufficient funds, the session is marked
+          `failed`, no balance is deducted, and `400` is returned.
       tags: ["Transaction"]
+      servers:
+        - url: "http://localhost:8081/api/v1"
+          description: "Payment Service"
       security:
         - bearerAuth: []
       requestBody:
@@ -360,19 +403,31 @@ paths:
               $ref: "#/components/schemas/PayRequest"
       responses:
         "200":
-          description: "Payment successful"
+          description: "Payment session created and processed within its 10-minute window"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayResponse"
         "400":
-          description: "Bad Request (e.g., insufficient funds)"
+          description: "Bad Request (e.g., insufficient funds or invalid amount)"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "401":
           description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "The payer's wallet was not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: "The payment session expired before it could be processed; no balance was deducted"
           content:
             application/json:
               schema:
